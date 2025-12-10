@@ -169,7 +169,7 @@ def nrem_sleep(T, optimizer, model, teacher, replay_buffer, epochs=5, lr=1e-3, i
             loss.backward()
             optimizer.step()
 
-def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_size=64, learning_rate=1e-3, p=0,
+def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_size=64, learning_rate=5e-4, p=0,
                 synaptic_downscaling=False, pruning=False, nrem_replay=False):
     
     criterion = nn.CrossEntropyLoss()
@@ -207,7 +207,7 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
             teacher.eval()
             hippocampus_loader = DataLoader(hippocampus, batch_size=round(train_loader.batch_size*len(hippocampus.data)/len(train_loader.dataset)), shuffle=True)
         else:
-            hippocampus_loader = DataLoader(UniformNoiseDataset(num_samples=10000, noise_shape=(3,32,32), low=0.0, high=1.0), batch_size=batch_size, shuffle=True)
+            hippocampus_loader = DataLoader(UniformNoiseDataset(num_samples=500, noise_shape=(3,32,32), low=0.0, high=1.0), batch_size=round(train_loader.batch_size*500/len(train_loader.dataset)), shuffle=True)
 
         for epoch in range(epochs_per_task):
             print(f'Epoch {epoch+1}/{epochs_per_task}')
