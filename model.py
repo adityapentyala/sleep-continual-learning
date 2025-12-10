@@ -230,7 +230,7 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
                     distillation_loss = distillation_criterion(model_outputs, teacher_outputs)
                     ce_loss = criterion(outputs, labels)
                     #print(ce_loss.item(), distillation_loss.item())
-                    loss = ce_loss * (1/(task+1)) + distillation_loss * (1 - 1/(task+1))
+                    loss = ce_loss + distillation_loss # ce_loss * (1/(task+1)) + distillation_loss * (1 - 1/(task+1))
                 else:
                     loss = criterion(outputs, labels)
                 loss.backward()
@@ -321,11 +321,11 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
 
     return train_accuracies, test_accuracies, train_losses, per_task_test_accuracies
 
-def plot_accuracies(train_accuracies, test_accuracies, epochs):
+def plot_accuracies(train_accuracies, test_accuracies, epochs, task_epochs):
     plt.figure()
     plt.plot(epochs, test_accuracies, label='Test Accuracy')
     for i in range(5):
-        plt.plot(epochs[i*10:10*i+10+1], train_accuracies[i*10:10*i+10+1], label=f'Train Accuracy for Task {i+1}')
+        plt.plot(epochs[i*task_epochs:task_epochs*i+task_epochs+1], train_accuracies[i*task_epochs:task_epochs*i+task_epochs+1], label=f'Train Accuracy for Task {i+1}')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
     plt.title('Train and Test Accuracies over Epochs')
