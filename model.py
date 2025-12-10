@@ -248,8 +248,8 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
             # if nrem_replay and task > 0:
             #     nrem_sleep(task+1, nrem_optimizer, model, teacher, hippocampus, lr=1e-4, interleaved=True)
 
-            # if synaptic_downscaling and p > 0:
-            #     apply_percentile_downscaling(model, prune_percentile=p)
+            if synaptic_downscaling and p > 0:
+                apply_percentile_downscaling(model, prune_percentile=p)
             
             # --- Evaluation Phase ---
             model.eval()
@@ -316,8 +316,8 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
         #     nrem_sleep(model, hippocampus, epochs=5, lr=1e-4)
 
         
-        if synaptic_downscaling and p > 0:
-            apply_percentile_downscaling(model, prune_percentile=p)
+        # if synaptic_downscaling and p > 0:
+        #     apply_percentile_downscaling(model, prune_percentile=p)
 
     return train_accuracies, test_accuracies, train_losses, per_task_test_accuracies
 
