@@ -188,7 +188,7 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
     all_test_targets = np.array(test_dataset.targets)
     all_train_targets = np.array(train_dataset.targets)
 
-    hippocampus = ReplayBuffer(samples_per_class=1000)
+    hippocampus = ReplayBuffer(samples_per_class=250)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     for task in range(5):
@@ -207,7 +207,7 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
             teacher.eval()
             hippocampus_loader = DataLoader(hippocampus, batch_size=round(train_loader.batch_size*len(hippocampus.data)/len(train_loader.dataset)), shuffle=True)
         else:
-            hippocampus_loader = DataLoader(UniformNoiseDataset(num_samples=1, noise_shape=(3,32,32), low=0.0, high=1.0), batch_size=1, shuffle=True)
+            hippocampus_loader = DataLoader(UniformNoiseDataset(num_samples=10000, noise_shape=(3,32,32), low=0.0, high=1.0), batch_size=batch_size, shuffle=True)
 
         for epoch in range(epochs_per_task):
             print(f'Epoch {epoch+1}/{epochs_per_task}')
@@ -218,7 +218,7 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
             epoch_correct = 0
             epoch_total = 0
             
-            for (images, labels), (replay_images, replay_labels) in zip((train_loader), cycle(hippocampus_loader) ):
+            for (images, labels), (replay_images, replay_labels) in zip(cycle(train_loader), (hippocampus_loader) ):
                 images, labels = images.to(device), labels.to(device)
                 optimizer.zero_grad()
                 outputs = model(images)
