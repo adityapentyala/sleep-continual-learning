@@ -23,8 +23,11 @@ def load_dataset(train=True, download=True):
     return dataset
 
 class SynapticDownscalingModel(nn.Module):
-    def __init__(self):
+    def __init__(self, p=0, nrem_replay=False):
         super(SynapticDownscalingModel, self).__init__()
+        self.p = p
+        self.nrem_replay = nrem_replay
+
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1)
         self.relu1 = nn.ReLU()
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2) 
@@ -321,7 +324,7 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
 
     return train_accuracies, test_accuracies, train_losses, per_task_test_accuracies
 
-def plot_accuracies(train_accuracies, test_accuracies, epochs, task_epochs):
+def plot_accuracies(train_accuracies, test_accuracies, epochs, task_epochs, model=None):
     plt.figure()
     plt.plot(epochs, test_accuracies, label='Test Accuracy')
     for i in range(5):
@@ -330,7 +333,11 @@ def plot_accuracies(train_accuracies, test_accuracies, epochs, task_epochs):
     plt.ylabel('Accuracy')
     plt.title('Train and Test Accuracies over Epochs')
     plt.legend()
-    plt.show()
+    #plt.show()
+    if model is not None:
+        plt.savefig(f'results/train_test_accuracies_p={model.p}, NREM replay={model.nrem_replay}.png')
+    else:
+        plt.savefig(f'results/train_test_accuracies_UNKNOWN.png')
 
 def test_model(model, test_dataset, batch_size=64):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
