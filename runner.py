@@ -9,7 +9,7 @@ if __name__ == "__main__":
 
     train_dataset = load_dataset(train=True)
     test_dataset = load_dataset(train=False)
-    num_epochs_per_task = 10
+    num_epochs_per_task = 2
     num_tasks = 5
 
     base_model = SynapticDownscalingModel()
@@ -23,16 +23,23 @@ if __name__ == "__main__":
               SynapticDownscalingModel(p=0.5, nrem_replay=True),
               SynapticDownscalingModel(p=0.75,nrem_replay=True)]
     
-    results = []
+    results = [] # (train_accuracies, test_accuracies, train_losses, per_task_test_accuracies)
+    final_weights = [] # (task, p, nrem, weights)
     
-    for model in models: 
+    for model in models:
+        print(f"\n\n=== Training Model: p={model.p}, NREM Replay={model.nrem_replay} ===")
         model.to(device)
         train_accuracies, test_accuracies, train_losses, per_task_test_accuracies = train_model(
         model, train_dataset, test_dataset, epochs_per_task=num_epochs_per_task, nrem_replay=model.nrem_replay, 
-        p=model.p)
+        p=model.p, final_weights=final_weights)
+
+        for task in range(num_tasks):
+            print(f"weights after task {task}{final_weights[-1][3].shape}:\n {final_weights[-1][3]}\n")
+
         results.append((train_accuracies, test_accuracies, train_losses, per_task_test_accuracies))
         plot_accuracies(train_accuracies, test_accuracies, 
                         range(1, num_epochs_per_task*num_tasks+1), num_epochs_per_task, model=model)
+        
         
     colors = plt.cm.get_cmap('tab10', num_tasks)
     task_labels = [f"Task {t}" for t in range(num_tasks)]
@@ -57,7 +64,7 @@ if __name__ == "__main__":
             plt.xlabel('Epochs')
             plt.ylim(bottom=0, top=0.8)
             plt.ylabel('Test Accuracy')
-            plt.title(f'Per Task Test Accuracy - p={models[i].p}, NREM Replay={models[i].nrem_replay}')
+            plt.title(f'Per Task Test Accuracy, p={models[i].p}, NREM_Replay={models[i].nrem_replay}')
             plt.legend()
         #plt.show()
-        plt.savefig(f'results/per_task_test_accuracy___p={models[i].p}, NREM Replay={models[i].nrem_replay}.png')
+        plt.savefig(f'results/per_task_test_accuracy___p={models[i].p}_NREM_Replay={models[i].nrem_replay}.png')

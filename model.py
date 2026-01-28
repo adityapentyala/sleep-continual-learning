@@ -173,7 +173,7 @@ def nrem_sleep(T, optimizer, model, teacher, replay_buffer, epochs=5, lr=1e-3, i
             optimizer.step()
 
 def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_size=64, learning_rate=5e-4, p=0,
-                synaptic_downscaling=False, pruning=False, nrem_replay=False):
+                synaptic_downscaling=False, pruning=False, nrem_replay=False, final_weights=None):
     
     criterion = nn.CrossEntropyLoss()
     distillation_criterion = nn.MSELoss()
@@ -205,7 +205,7 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
         subset = Subset(train_dataset, indices)
         train_loader = DataLoader(subset, batch_size=batch_size, shuffle=True)
         
-        if task > 0:
+        if task > 0 and nrem_replay==True:
             teacher = copy.deepcopy(model)
             teacher.eval()
             hippocampus_loader = DataLoader(hippocampus, batch_size=round(train_loader.batch_size*len(hippocampus.data)/len(train_loader.dataset)), shuffle=True)
@@ -311,8 +311,13 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
             # if pruning and p > 0:
             #     apply_percentile_downscaling(model, prune_percentile=p)
         
-        print(f"\n[Consolidating] Storing memories from Task {task}...")
-        hippocampus.add_data(train_dataset, train_classes)
+        #print(f"\n[Consolidating] Storing memories from Task {task}...")
+        if nrem_replay:
+            hippocampus.add_data(train_dataset, train_classes)
+
+        # save model after task
+        if p==0 and not nrem_replay:
+            torch.save(model.state_dict(), f'models/model_after_task_{task}_no_downscaling.pth')
         
         # nrem sleep phase post train
         # if nrem_replay:
@@ -321,6 +326,12 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
         
         # if synaptic_downscaling and p > 0:
         #     apply_percentile_downscaling(model, prune_percentile=p)
+
+        # print out final layer weights
+        if final_weights is not None:
+            final_layer_weights = model.fc3.weight.data.cpu().numpy()
+            final_weights.append((task, p, nrem_replay, final_layer_weights))
+        
 
     return train_accuracies, test_accuracies, train_losses, per_task_test_accuracies
 
@@ -335,7 +346,7 @@ def plot_accuracies(train_accuracies, test_accuracies, epochs, task_epochs, mode
     plt.legend()
     #plt.show()
     if model is not None:
-        plt.savefig(f'results/train_test_accuracies_p={model.p}, NREM replay={model.nrem_replay}.png')
+        plt.savefig(f'results/train_test_accuracies___p_{model.p}_NREM_replay_{model.nrem_replay}.png')
     else:
         plt.savefig(f'results/train_test_accuracies_UNKNOWN.png')
 
