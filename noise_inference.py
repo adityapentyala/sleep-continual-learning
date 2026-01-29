@@ -8,6 +8,7 @@ if __name__ == "__main__":
     noise_inputs = UniformNoiseDataset(num_samples=1000, noise_shape=(3, 32, 32))
     models = [SynapticDownscalingModel(p=0, nrem_replay=False)]*5
     for task, model in enumerate(models):
+        print(f"\n\n=== Evaluating Model after Task {task+1} ===")
         model.load_state_dict(torch.load(f"models/model_after_task_{task}_no_downscaling.pth"))
         model.eval()
         model.to(device)
