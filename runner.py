@@ -31,7 +31,7 @@ if __name__ == "__main__":
         model.to(device)
         train_accuracies, test_accuracies, train_losses, per_task_test_accuracies = train_model(
         model, train_dataset, test_dataset, epochs_per_task=num_epochs_per_task, nrem_replay=model.nrem_replay, 
-        p=model.p, final_weights=final_weights)
+        p=model.p, final_weights=final_weights, noise_train=False)
 
         for task in range(num_tasks):
             print(f"weights after task {task}{final_weights[-1][3].shape}:\n {final_weights[-1][3]}\n")

@@ -73,7 +73,7 @@ def apply_percentile_downscaling(model, prune_percentile=0.2):
                 param.data.mul_(mask)
 
 class ReplayBuffer(Dataset):
-    def __init__(self, samples_per_class=200, mean=0.0, std=0.1):
+    def __init__(self, samples_per_class=200, mean=0.0, std=0.1, pure_noise=False):
         """
         Stores images and labels for replay.
         samples_per_class: How many real images to keep per specific class.
@@ -84,6 +84,8 @@ class ReplayBuffer(Dataset):
         self.seen_classes = set()
         self.mean=mean
         self.std = std
+        self.pure_noise = pure_noise
+        self.labels=[]
 
     def add_data(self, dataset, class_labels):
         """
@@ -117,8 +119,12 @@ class ReplayBuffer(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        noisy_image_tensor = self.data[idx] + torch.randn(self.data[idx].size())*self.mean*self.std
-        return noisy_image_tensor, self.targets[idx]
+        if not self.pure_noise:
+            noisy_image_tensor = self.data[idx] + torch.randn(self.data[idx].size())*self.mean*self.std
+            return noisy_image_tensor, self.targets[idx]
+        else:
+            low, high = 0.0, 1.0
+            return low + (high - low) * torch.rand((3, 32, 32)), torch.randint(low=self.labels[0], high=self.labels[1]+1, size=(1,)).item()
     
 class UniformNoiseDataset(Dataset):
     """Dataset that generates random uniform noise."""
@@ -134,6 +140,7 @@ class UniformNoiseDataset(Dataset):
         self.noise_shape = noise_shape
         self.low = low
         self.high = high
+        #self.labels = labels
 
     def __len__(self):
         """Returns the total number of samples in the dataset."""
@@ -145,7 +152,7 @@ class UniformNoiseDataset(Dataset):
         noise = self.low + (self.high - self.low) * torch.rand(self.noise_shape)
         
         # You can also use a target/label if needed (e.g., a dummy label of 0)
-        label = torch.tensor(0) 
+        label = torch.tensor(0)#torch.randint(low=self.labels[0], high=self.labels[1]+1, size=(1,)).item() 
         
         return noise, label
     
@@ -173,7 +180,7 @@ def nrem_sleep(T, optimizer, model, teacher, replay_buffer, epochs=5, lr=1e-3, i
             optimizer.step()
 
 def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_size=64, learning_rate=5e-4, p=0,
-                synaptic_downscaling=False, pruning=False, nrem_replay=False, final_weights=None):
+                synaptic_downscaling=False, pruning=False, nrem_replay=False, final_weights=None, noise_train=False):
     
     criterion = nn.CrossEntropyLoss()
     distillation_criterion = nn.MSELoss()
@@ -206,9 +213,15 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
         train_loader = DataLoader(subset, batch_size=batch_size, shuffle=True)
         
         if task > 0 and nrem_replay==True:
+            hippocampus.labels=[0, task*2+1]
             teacher = copy.deepcopy(model)
             teacher.eval()
-            hippocampus_loader = DataLoader(hippocampus, batch_size=round(train_loader.batch_size*len(hippocampus.data)/len(train_loader.dataset)), shuffle=True)
+            teacher.to(device)
+            if noise_train == False:    
+                hippocampus_loader = DataLoader(hippocampus, batch_size=round(train_loader.batch_size*len(hippocampus.data)/len(train_loader.dataset)), shuffle=True)
+            else:
+                hippocampus.pure_noise=True
+                hippocampus_loader = DataLoader(hippocampus, batch_size=round(train_loader.batch_size*len(hippocampus.data)/len(train_loader.dataset)), shuffle=True)
         else:
             hippocampus_loader = DataLoader(UniformNoiseDataset(num_samples=500, noise_shape=(3,32,32), low=0.0, high=1.0), batch_size=round(train_loader.batch_size*500/len(train_loader.dataset)), shuffle=True)
 
@@ -223,6 +236,7 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
             
             for (images, labels), (replay_images, replay_labels) in zip(cycle(train_loader), (hippocampus_loader) ):
                 images, labels = images.to(device), labels.to(device)
+                replay_images, replay_labels = replay_images.to(device), replay_labels.to(device)
                 optimizer.zero_grad()
                 outputs = model(images)
                 if task > 0 and nrem_replay==True:
@@ -233,7 +247,10 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
                     distillation_loss = distillation_criterion(model_outputs, teacher_outputs)
                     ce_loss = criterion(outputs, labels)
                     #print(ce_loss.item(), distillation_loss.item())
-                    loss = ce_loss + distillation_loss # ce_loss * (1/(task+1)) + distillation_loss * (1 - 1/(task+1))
+                    if noise_train:
+                        loss = ce_loss+criterion(model_outputs, replay_labels)
+                    else: 
+                        loss = ce_loss + distillation_loss # ce_loss * (1/(task+1)) + distillation_loss * (1 - 1/(task+1))
                 else:
                     loss = criterion(outputs, labels)
                 loss.backward()
@@ -318,6 +335,8 @@ def train_model(model, train_dataset, test_dataset, epochs_per_task=10, batch_si
         # save model after task
         if p==0 and not nrem_replay:
             torch.save(model.state_dict(), f'models/model_after_task_{task}_no_downscaling.pth')
+        else:
+            torch.save(model.state_dict(), f'models/model_after_task_{task}_p_{p}.pth')
         
         # nrem sleep phase post train
         # if nrem_replay:
@@ -352,15 +371,35 @@ def plot_accuracies(train_accuracies, test_accuracies, epochs, task_epochs, mode
 
 def test_model(model, test_dataset, batch_size=64):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
     model.eval()
     correct = 0
     total = 0
+    distribution = {}
+    logits = np.zeros((1, 10))
+    #print("Initial logits: ", logits)
+    num = 0
     with torch.no_grad():
         for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
             outputs = model(images)
+            logits = logits + np.sum(outputs.cpu().numpy(), axis=0)
+            #print("Logits shape: ", logits.shape)
+            num+=len(labels)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
+            unique, counts = torch.unique(predicted, return_counts=True)
+            distribution_batch = dict(zip(unique.cpu().numpy(), counts.cpu().numpy()))
+            for key, value in distribution_batch.items():
+                if key in distribution:
+                    distribution[key] += value
+                else:
+                    distribution[key] = value
             correct += (predicted == labels).sum().item()
+    #print("summed logits: ",logits, num)
+    avg_logits = logits / num
+    print("Average logits: ", avg_logits)
     test_acc = correct / total
     print(f'Test Accuracy: {test_acc:.4f}')
-    return test_acc
+    return test_acc, unique, counts, distribution
